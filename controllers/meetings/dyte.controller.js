@@ -241,15 +241,17 @@ export const joinBatchClass = async (req, res) => {
       return res.status(400).json({ success: false, message: validation.message });
     }
 
-    // Check if the meeting has been hosted/started TODAY
-    // Logic: last_class_start_time must be "today"
-    const today = moment();
+    // Check if the meeting has been hosted/started RECENTLY (within last 12 hours)
+    // This handles timezone issues where 'today' in UTC might differ from user's 'today'
     const lastStart = batch.last_class_start_time ? moment(batch.last_class_start_time) : null;
+    const isStartedRecently = lastStart && moment().diff(lastStart, 'hours') < 12;
 
-    const isStartedToday = lastStart && lastStart.isSame(today, 'day');
+    if (!batch.dyte_meeting_id || batch.meeting_platform !== 'Dyte') {
+      return res.status(400).json({ success: false, message: "Dyte meeting not configured for this batch." });
+    }
 
-    if (!batch.dyte_meeting_id || batch.meeting_platform !== 'Dyte' || !isStartedToday) {
-      return res.status(400).json({ success: false, message: "Class has not been started by the instructor yet." });
+    if (!isStartedRecently) {
+      return res.status(400).json({ success: false, message: "Class has not been started by the instructor yet (or session expired)." });
     }
 
     // Add User as Participant
