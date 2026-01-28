@@ -222,8 +222,19 @@ export const joinBatchClass = async (req, res) => {
     const { batchId } = req.body;
     const userId = req.user.id || req.user.user_id;
 
+    console.log(`[Dyte-Join] Request received. User: ${userId}, BatchID: ${batchId}`);
+
+    if (!batchId) {
+      console.warn("[Dyte-Join] Missing batchId in request body");
+      return res.status(400).json({ success: false, message: "Batch ID required" });
+    }
+
     const batch = await Batch.findById(batchId);
-    if (!batch) return res.status(404).json({ success: false, message: "Batch not found" });
+    if (!batch) {
+      console.warn(`[Dyte-Join] Batch not found in DB for ID: ${batchId}`);
+      // Return 400 so client knows it's a data error, not a route error
+      return res.status(400).json({ success: false, message: `Batch not found (ID: ${batchId})` });
+    }
 
     const validation = validateClassTime(batch);
     if (!validation.valid) {
@@ -354,7 +365,7 @@ export const getBatchRecordings = async (req, res) => {
           ...rec,
           type: 'dyte',
           id: rec.id,
-          title: `Recording - ${moment(rec.created_at).format('MMM Do, YYYY')}`,
+          title: `Recording - ${batch.batch_name} - ${moment(rec.created_at).format('MMM Do, YYYY')}`,
           url: rec.url || rec.download_url,
           created_at: rec.created_at,
           duration: rec.duration,
