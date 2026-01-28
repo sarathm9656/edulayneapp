@@ -309,35 +309,48 @@ export const joinBatchClass = async (req, res) => {
       return sendError(res, 400, 'MEETING_NOT_CONFIGURED', 'Meeting room not initialized. Ask instructor to start class.');
     }
 
-    // 4. Add Participant
+    // 4. Add Participant (With Auto-Retry Strategy)
     const name = await getUserName(userId);
     let preset = (['tenant', 'instructor', 'admin'].includes(userRole))
       ? 'group_call_host'
       : 'group_call_participant';
 
+    let participant;
     try {
-      const participant = await addParticipant(batch.dyte_meeting_id, name, preset, userId);
-
-      // Attendance Logic (Fire and Forget)
-      if (userRole === 'student') {
-        markAttendance(userId, batch).catch(e => console.error("Attendance Error:", e));
-      }
-
-      res.json({
-        success: true,
-        meeting_id: batch.dyte_meeting_id,
-        authToken: participant.token,
-        role: userRole || 'student'
-      });
-
+      participant = await addParticipant(batch.dyte_meeting_id, name, preset, userId);
     } catch (error) {
-      // 404 Auto-Heal attempt for Flexible Mode only?
-      // Or if instructor joins, regen? 
-      // If student joins and gets 404, we can't regen (security). They must wait for instructor.
-      if (error.status === 404) {
-        return sendError(res, 400, 'MEETING_EXPIRED', 'Meeting ID is invalid or expired. Instructor must restart class.');
+      // 5. Error Handling & Auto-Healing
+      // If Dyte returns 404 (Meeting not found), 400 (Bad Request), or 401, it likely means the meeting ID is stale.
+      // We should attempt to heal this by creating a FRESH meeting and trying again.
+      // This guarantees the 'user experience' is not broken by API glitches.
+
+      const isDyteError = error.status === 404 || error.status === 400 || error.status === 401;
+
+      if (isDyteError) {
+        console.warn(`[Dyte] Join failed (Status: ${error.status}). Auto-healing batch ${batchId}...`);
+
+        try {
+          // Force regeneration of meeting
+          batch.dyte_meeting_id = null;
+          batch.meeting_platform = 'Dyte';
+          const newMeetingId = await ensureActiveMeeting(batch);
+
+          // Retry adding participant to NEW meeting
+          participant = await addParticipant(newMeetingId, name, preset, userId);
+
+          // Save the new state
+          await batch.save();
+          console.log(`[Dyte] Auto-heal successful. New Meeting ID: ${newMeetingId}`);
+
+        } catch (retryError) {
+          console.error("[Dyte] Auto-heal failed:", retryError);
+          // Fallback to original error flow if healing fails
+          return sendError(res, 500, 'DYTE_ERROR', "Unable to join class due to connection provider error.");
+        }
+      } else {
+        // Non-recoverable error (e.g. Rate Limit, API down?)
+        throw error;
       }
-      throw error;
     }
 
   } catch (error) {
