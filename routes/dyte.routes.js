@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.post('/create-meeting', authMiddleware, startBatchClass);
 router.post('/join-meeting', authMiddleware, joinBatchClass);
+router.get('/join-meeting', authMiddleware, joinBatchClass); // Fallback for GET requests
 router.get('/recordings/:batchId', authMiddleware, getBatchRecordings);
 router.post('/upload-recording/:batchId', authMiddleware, upload.single('recording'), uploadManualRecording);
 router.post('/sync-recordings/:batchId', authMiddleware, syncBatchRecordings);

@@ -219,7 +219,7 @@ export const startBatchClass = async (req, res) => {
 
 export const joinBatchClass = async (req, res) => {
   try {
-    const { batchId } = req.body;
+    const { batchId } = req.body.batchId ? req.body : req.query; // Check body then query
     const userId = req.user.id || req.user.user_id;
     console.log(`[Dyte] Join Request - BatchID: ${batchId}, UserID: ${userId}, Role: ${req.user.role}`);
 
