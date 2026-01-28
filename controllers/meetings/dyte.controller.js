@@ -167,3 +167,19 @@ export const joinBatchClass = async (req, res) => {
     sendError(res, 'JOIN_FAILED', 'Unable to join class', 500);
   }
 };
+
+export const getBatchRecordings = async (req, res) => {
+  return res.json({ success: true, recordings: [] });
+};
+
+export const uploadManualRecording = async (req, res) => {
+  return res.json({ success: true, message: "Upload not implemented" });
+};
+
+export const syncBatchRecordings = async (req, res) => {
+  return res.json({ success: true, message: "Sync not implemented" });
+};
+
+export const handleDyteWebhook = async (req, res) => {
+  return res.status(200).send("OK");
+};
