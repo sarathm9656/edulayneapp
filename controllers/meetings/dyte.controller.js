@@ -27,72 +27,97 @@ const getAuthHeaders = () => ({
 const validateClassTime = (batch) => {
   const today = moment();
 
-  // 0. Check Flexible Schedule
+  // ---------------------------------------------------------
+  // 0. STRICT MODE CHECK - The "Master Switch"
+  // ---------------------------------------------------------
+  // If Strict Schedule is explicitly FALSE, we skip ALL validations.
+  // This allows starting/joining at ANY time, ANY day, ANY status (except maybe 'inactive').
   if (batch.is_strict_schedule === false) {
+    console.log(`[Dyte] Strict Mode is OFF for Batch ${batch._id}. Validation skipped.`);
     return { valid: true };
   }
 
-  // 1. Check Status
+  // ---------------------------------------------------------
+  // 1. Status Check (Even in strict mode, we might want to block inactive)
+  // ---------------------------------------------------------
   if (batch.status === 'completed') {
-    return { valid: false, message: "Batch is already completed" };
+    return { valid: false, message: "Batch is marked as completed." };
   }
   if (batch.status === 'inactive') {
-    return { valid: false, message: "Batch is currently inactive" };
+    return { valid: false, message: "Batch is currently inactive." };
   }
 
-  // 2. Check Date Range
+  // ---------------------------------------------------------
+  // 2. Date Range Check
+  // ---------------------------------------------------------
   if (batch.start_date && today.isBefore(moment(batch.start_date).startOf('day'))) {
-    return { valid: false, message: "Batch has not started yet (Date)" };
+    return { valid: false, message: `Batch course has not started yet. Starts on ${moment(batch.start_date).format('LL')}` };
   }
   if (batch.end_date && today.isAfter(moment(batch.end_date).endOf('day'))) {
-    return { valid: false, message: "Batch is already completed (Date)" };
+    return { valid: false, message: `Batch course ended on ${moment(batch.end_date).format('LL')}` };
   }
 
-  // 3. Check Recurring Days
+  // ---------------------------------------------------------
+  // 3. Recursive Days Check (Day of Week)
+  // ---------------------------------------------------------
   if (!batch.recurring_days || batch.recurring_days.length === 0) {
-    return { valid: false, message: "No class days defined for this batch." };
+    // If no days defined, we assume it's open schedule? Or block? 
+    // Usually strict mode implies days are defined.
+    return { valid: false, message: "No class days defined in schedule." };
   }
-  const todayDay = today.format('dddd');
+
+  const todayDay = today.format('dddd'); // e.g. "Monday"
   if (!batch.recurring_days.includes(todayDay)) {
-    return { valid: false, message: "Today is not a scheduled class day" };
+    return { valid: false, message: `Today (${todayDay}) is not a scheduled class day.` };
   }
 
-  // 4. Check Time
+  // ---------------------------------------------------------
+  // 4. Time Check (Time of Day)
+  // ---------------------------------------------------------
   if (batch.batch_time) {
-    let startStr = batch.batch_time;
-    let endStr = null;
+    let startStr = "";
+    let endStr = "";
 
-    // Try to split logic "10:00 AM - 11:00 AM"
+    // Robust parsing of "10:00 AM - 11:00 AM" or "10:00AM-11:00AM" etc.
     if (batch.batch_time.includes("-")) {
       const parts = batch.batch_time.split("-");
       startStr = parts[0].trim();
       if (parts.length > 1) endStr = parts[1].trim();
+    } else {
+      startStr = batch.batch_time.trim();
     }
 
-    // Start Time Check
-    // Example: "10:00 AM" -> parsed as today at 10:00 AM
-    const formatStart = startStr.toUpperCase().includes('M') ? 'h:mm A' : 'H:mm';
-    const startTime = moment(startStr, formatStart);
+    // Supported formats
+    const timeFormats = ['h:mm A', 'h:mmA', 'H:mm', 'HH:mm'];
+
+    // Start Time
+    const startTime = moment(startStr, timeFormats, true); // true for strict parsing
+    if (!startTime.isValid()) {
+      return { valid: false, message: `Invalid batch time format: ${startStr}` };
+    }
+
+    // Set to today
     startTime.set({ year: today.year(), month: today.month(), date: today.date() });
 
-    // Buffer: Allow joining 15 mins before
-    // If today is 09:44 and start is 10:00, allowedStart is 09:45. 09:44 < 09:45 (isBefore) -> Too early.
-    // If today is 09:45 -> Valid.
+    // Allowed Window: 15 mins before start
     const allowedStart = moment(startTime).subtract(15, 'minutes');
 
     if (today.isBefore(allowedStart)) {
       const minutesUntil = allowedStart.diff(today, 'minutes');
-      return { valid: false, message: `Class can only be started/joined 15 minutes before scheduled time. Please wait ${minutesUntil} minutes.` };
+      return { valid: false, message: `Class is scheduled for ${startStr}. You can join 15 minutes early.` };
     }
 
-    // End Time Check
+    // End Time (Optional but recommended for strict mode)
     if (endStr) {
-      const formatEnd = endStr.toUpperCase().includes('M') ? 'h:mm A' : 'H:mm';
-      const endTime = moment(endStr, formatEnd);
-      endTime.set({ year: today.year(), month: today.month(), date: today.date() });
+      const endTime = moment(endStr, timeFormats, true);
+      if (endTime.isValid()) {
+        endTime.set({ year: today.year(), month: today.month(), date: today.date() });
 
-      if (today.isAfter(endTime)) {
-        return { valid: false, message: "Batch class time is over for today." };
+        // Tolerance: Allow joining 15 mins after end time? Or hard stop?
+        // Let's stop exact at end time for strictness
+        if (today.isAfter(endTime)) {
+          return { valid: false, message: `Class time (${startStr} - ${endStr}) is over for today.` };
+        }
       }
     }
   }
