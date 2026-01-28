@@ -13,7 +13,11 @@ router.post("/resend-mail", resendMail);
 router.post("/logout", async (req, res) => {
   try {
     console.log("logout");
-    res.clearCookie("token");
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     res.status(500).json({ message: "Error logging out" });
@@ -28,7 +32,11 @@ router.post(
   async (req, res) => {
     try {
       console.log("instructor logout");
-      res.clearCookie("token");
+      res.clearCookie("token", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+      });
       res.status(200).json({ message: "Logged out successfully" });
     } catch (error) {
       res.status(500).json({ message: "Error logging out" });

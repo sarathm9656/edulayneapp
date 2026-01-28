@@ -16,6 +16,7 @@ const __dirname = dirname(__filename);
 
 // Create Express app
 const app = express();
+app.set("trust proxy", 1);
 
 // Middleware
 const allowedOrigins = [

@@ -80,8 +80,8 @@ export const loginUser = async (req, res) => {
 
     res.cookie(cookieKey, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: true, // Always true for cross-site (Render is HTTPS, Localhost allows it)
+      sameSite: "none", // Always none to allow cross-site requests
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
